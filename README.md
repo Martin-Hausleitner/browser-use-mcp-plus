@@ -11,6 +11,7 @@ Dieses Repo enthält Wrapper-Skripte und kleine MCP-Server, um eine lokale Chrom
 - `bin/`: Entry-Points (werden von deinem MCP-Client aufgerufen)
 - `lib/`: Shared Shell-Libs
 - `servers/`: Python MCP-Server (`ui_describe`, `chrome-devtools`)
+- `scripts/`: Example + lokale Test-Suite (MCP stdio client)
 - Runtime-State: standardmäßig unter `$XDG_STATE_HOME/browser-use-mcp-plus/` (oder `~/.local/state/browser-use-mcp-plus/`)
 
 ## Setup (Kurz)
@@ -21,6 +22,13 @@ Dieses Repo enthält Wrapper-Skripte und kleine MCP-Server, um eine lokale Chrom
 3) Konfiguriere deinen MCP-Client so, dass er die Wrapper in `bin/` startet.
 
 Beispiel-Snippet ohne Secrets: `examples/claude.mcpServers.example.json`.
+
+## Quickstart
+
+- Example (öffnet eine lokale Fixture-Seite, navigiert via `browser-use`, beschreibt via `ui-describe`, eval via `chrome-devtools`):
+  - `bin/mcp_plus.sh example`
+- Test-Suite (smoke-testet alle MCP Server via stdio + CDP):
+  - `bin/mcp_plus.sh test`
 
 ## Wichtige Env-Variablen
 

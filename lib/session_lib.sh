@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+browser_use_python_bin() {
+  local candidate="${BROWSER_USE_MCP_PYTHON:-}"
+  if [[ -n "${candidate}" ]] && [[ -x "${candidate}" ]]; then
+    printf '%s' "${candidate}"
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    command -v python
+    return 0
+  fi
+  return 1
+}
+
 browser_use_resolve_session_id() {
   local session_id="${BROWSER_USE_SESSION_ID:-}"
   if [[ -n "${session_id}" ]]; then
@@ -72,8 +90,9 @@ browser_use_session_profile_dir() {
 
 browser_use_proc_start_ticks() {
   local pid="$1"
-  command -v python3 >/dev/null 2>&1 || return 1
-  python3 - "${pid}" <<'PY'
+  local python_bin
+  python_bin="$(browser_use_python_bin)" || return 1
+  "${python_bin}" - "${pid}" <<'PY'
 import os
 import sys
 
@@ -212,7 +231,9 @@ browser_use_resolve_owner_pid() {
 
 browser_use_try_resolve_claude_session_id_from_debug() {
   # Args: one or more PIDs (as separate args). Output: "<uuid>\t<matched_pid>" or empty.
-  python3 - "$@" <<'PY'
+  local python_bin
+  python_bin="$(browser_use_python_bin)" || return 1
+  "${python_bin}" - "$@" <<'PY'
 import glob
 import os
 import sys
@@ -272,8 +293,9 @@ PY
 
 browser_use_try_resolve_claude_session_id_from_pid_fds() {
   local pid="$1"
-  command -v python3 >/dev/null 2>&1 || return 1
-  python3 - "${pid}" <<'PY'
+  local python_bin
+  python_bin="$(browser_use_python_bin)" || return 1
+  "${python_bin}" - "${pid}" <<'PY'
 import os
 import re
 import sys

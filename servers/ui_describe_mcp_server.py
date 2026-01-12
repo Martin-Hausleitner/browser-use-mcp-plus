@@ -339,7 +339,15 @@ async def describe_ui(*, question: str | None, url_contains: str | None, full_pa
 		finally:
 			await browser.close()
 
-	llm = _get_llm()
+	try:
+		llm = _get_llm()
+	except Exception as exc:
+		elapsed_ms = int((time.time() - start) * 1000)
+		note = (
+			'LLM not configured for ui-describe. Set OPENAI_API_BASE/OPENAI_BASE_URL + OPENAI_API_KEY '
+			f'to enable screenshot-to-text. ({type(exc).__name__}: {exc})'
+		)
+		return f'URL: {page_url}\nTitle: {page_title}\nElapsed: {elapsed_ms}ms\n\n{note}\nScreenshot bytes: {len(screenshot_bytes)}'
 
 	prompt_language = (os.getenv('UI_DESCRIBE_LANGUAGE') or 'de').strip().lower()
 	lang_line = 'Antworte auf Deutsch.' if prompt_language.startswith('de') else 'Answer in English.'

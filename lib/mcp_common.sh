@@ -43,13 +43,6 @@ browser_use_mcp_resolve_python() {
     return 0
   fi
 
-  # Backwards-compat for this environment (existing local venv).
-  candidate="/home/mh/Desktop/browser_use_test/venv/bin/python"
-  if [[ -x "${candidate}" ]]; then
-    printf '%s' "${candidate}"
-    return 0
-  fi
-
   if command -v python3 >/dev/null 2>&1; then
     command -v python3
     return 0

@@ -8,6 +8,26 @@ if [[ -f "${LIB}" ]]; then
   source "${LIB}"
 fi
 
+resolve_python_bin() {
+  local candidate="${BROWSER_USE_MCP_PYTHON:-}"
+  if [[ -n "${candidate}" ]] && [[ -x "${candidate}" ]]; then
+    printf '%s' "${candidate}"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    command -v python
+    return 0
+  fi
+  echo "ERROR: python not found (set BROWSER_USE_MCP_PYTHON=...)" >&2
+  exit 1
+}
+
+PYTHON_BIN="$(resolve_python_bin)"
+
 MODE="${BROWSER_USE_CHROME_MODE:-auto}" # auto|session|persistent
 CDP_HOST="${CDP_HOST:-127.0.0.1}"
 CHROME_BIN="${CHROME_BIN:-${BROWSER_USE_CHROME_BIN:-google-chrome}}"
@@ -49,12 +69,13 @@ legacy_setup() {
   CDP_PORT="${CDP_PORT:-9222}"
   CDP_URL="http://${CDP_HOST}:${CDP_PORT}"
   USER_DATA_DIR="${BROWSER_USE_PERSISTENT_USER_DATA_DIR:-${HOME}/.config/browseruse/profiles/persistent-cdp}"
-  STATE_ROOT="$(browser_use_mcp_state_root)"
-  LOG_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOG_FILE:-${STATE_ROOT}/persistent-chrome.log}"
-  PID_FILE="${BROWSER_USE_PERSISTENT_CHROME_PID_FILE:-${STATE_ROOT}/persistent-chrome.pid}"
-  LOCK_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOCK_FILE:-${STATE_ROOT}/persistent-chrome.lock}"
+  local state_root
+  state_root="$(browser_use_mcp_state_root)"
+  LOG_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOG_FILE:-${state_root}/persistent-chrome.log}"
+  PID_FILE="${BROWSER_USE_PERSISTENT_CHROME_PID_FILE:-${state_root}/persistent-chrome.pid}"
+  LOCK_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOCK_FILE:-${state_root}/persistent-chrome.lock}"
 
-  mkdir -p "${STATE_ROOT}"
+  mkdir -p "${state_root}"
   mkdir -p "${USER_DATA_DIR}"
 }
 
@@ -82,7 +103,7 @@ session_setup() {
 
   # If a previous port was chosen for this session, try to reuse it.
   if [[ -f "${STATE_FILE}" ]]; then
-    CDP_PORT="$(python3 - "${STATE_FILE}" <<'PY'
+    CDP_PORT="$("${PYTHON_BIN}" - "${STATE_FILE}" <<'PY'
 import json, sys
 p = sys.argv[1]
 try:
@@ -96,7 +117,7 @@ PY
   fi
 
   if [[ -z "${CDP_PORT:-}" ]]; then
-    CDP_PORT="$(python3 - <<'PY'
+    CDP_PORT="$("${PYTHON_BIN}" - <<'PY'
 import socket
 s = socket.socket()
 s.bind(("127.0.0.1", 0))
@@ -148,7 +169,7 @@ is_pid_alive() {
 find_existing_chrome_for_profile() {
   # Output: "<pid>\t<remote_debugging_port>" or empty.
   local user_data_dir="$1"
-  python3 - "${user_data_dir}" <<'PY'
+  "${PYTHON_BIN}" - "${user_data_dir}" <<'PY'
 import os
 import sys
 
@@ -224,7 +245,7 @@ write_state_file() {
   if [[ -z "${STATE_FILE:-}" ]]; then
     return 0
   fi
-  python3 - "${STATE_FILE}" <<PY
+  "${PYTHON_BIN}" - "${STATE_FILE}" <<PY
 import json, os, sys, time
 
 state_file = sys.argv[1]
