@@ -1,0 +1,19 @@
+# Runtime state
+sessions/
+browseruse_agent_data/
+devtools/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local state files
+shared_state.json
+*.pid
+*.log
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+

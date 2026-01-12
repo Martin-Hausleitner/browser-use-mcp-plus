@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "browser-use": {
+      "type": "stdio",
+      "command": "~/.browser-use-mcp/bin/browser_use_mcp.sh",
+      "args": [],
+      "env": {
+        "BROWSER_USE_MCP_PYTHON": "/path/to/your/venv/bin/python",
+        "BROWSER_USE_CHROME_MODE": "session",
+        "OPENAI_API_BASE": "http://localhost:8317/v1",
+        "OPENAI_API_KEY": "YOUR_KEY_OR_PROXY",
+        "BROWSER_USE_LLM_MODEL": "gpt-4.1",
+        "BROWSER_USE_VISION_MODEL": "gpt-4.1"
+      }
+    },
+    "ui-describe": {
+      "type": "stdio",
+      "command": "~/.browser-use-mcp/bin/ui_describe_mcp.sh",
+      "args": [],
+      "env": {
+        "BROWSER_USE_MCP_PYTHON": "/path/to/your/venv/bin/python",
+        "UI_DESCRIBE_LANGUAGE": "de",
+        "UI_VISION_MODEL": "gpt-4.1"
+      }
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "~/.browser-use-mcp/bin/chrome_devtools_mcp.sh",
+      "args": [],
+      "env": {
+        "BROWSER_USE_MCP_PYTHON": "/path/to/your/venv/bin/python"
+      }
+    }
+  }
+}
+
