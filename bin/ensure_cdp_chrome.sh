@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LIB="${HOME}/.browser-use-mcp/bin/session_lib.sh"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+LIB="${BROWSER_USE_MCP_SESSION_LIB:-${SCRIPT_DIR}/../lib/session_lib.sh}"
 if [[ -f "${LIB}" ]]; then
   # shellcheck source=/dev/null
   source "${LIB}"
@@ -35,15 +36,25 @@ should_keep_browser_open() {
   return 1
 }
 
+browser_use_mcp_state_root() {
+  if declare -F browser_use_state_root >/dev/null 2>&1; then
+    browser_use_state_root
+    return 0
+  fi
+  local xdg_state="${XDG_STATE_HOME:-${HOME}/.local/state}"
+  printf '%s/browser-use-mcp-plus' "${xdg_state}"
+}
+
 legacy_setup() {
   CDP_PORT="${CDP_PORT:-9222}"
   CDP_URL="http://${CDP_HOST}:${CDP_PORT}"
   USER_DATA_DIR="${BROWSER_USE_PERSISTENT_USER_DATA_DIR:-${HOME}/.config/browseruse/profiles/persistent-cdp}"
-  LOG_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOG_FILE:-/tmp/browser-use-persistent-chrome.log}"
-  PID_FILE="${BROWSER_USE_PERSISTENT_CHROME_PID_FILE:-${HOME}/.browser-use-mcp/persistent-chrome.pid}"
-  LOCK_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOCK_FILE:-/tmp/browser-use-persistent-chrome.lock}"
+  STATE_ROOT="$(browser_use_mcp_state_root)"
+  LOG_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOG_FILE:-${STATE_ROOT}/persistent-chrome.log}"
+  PID_FILE="${BROWSER_USE_PERSISTENT_CHROME_PID_FILE:-${STATE_ROOT}/persistent-chrome.pid}"
+  LOCK_FILE="${BROWSER_USE_PERSISTENT_CHROME_LOCK_FILE:-${STATE_ROOT}/persistent-chrome.lock}"
 
-  mkdir -p "$(dirname "${PID_FILE}")"
+  mkdir -p "${STATE_ROOT}"
   mkdir -p "${USER_DATA_DIR}"
 }
 

@@ -44,9 +44,23 @@ browser_use_sanitize_session_id() {
   printf '%.80s' "${safe}"
 }
 
+browser_use_state_root() {
+  local explicit="${BROWSER_USE_MCP_STATE_DIR:-}"
+  if [[ -n "${explicit}" ]]; then
+    printf '%s' "${explicit}"
+    return 0
+  fi
+
+  local xdg_state="${XDG_STATE_HOME:-${HOME}/.local/state}"
+  printf '%s/browser-use-mcp-plus' "${xdg_state}"
+}
+
 browser_use_session_dir() {
   local session_id_safe="$1"
-  local base="${BROWSER_USE_MCP_SESSIONS_DIR:-${HOME}/.browser-use-mcp/sessions}"
+  local base="${BROWSER_USE_MCP_SESSIONS_DIR:-}"
+  if [[ -z "${base}" ]]; then
+    base="$(browser_use_state_root)/sessions"
+  fi
   printf '%s/%s' "${base}" "${session_id_safe}"
 }
 

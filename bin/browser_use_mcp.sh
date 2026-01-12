@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
-source "${SCRIPT_DIR}/mcp_common.sh"
+source "${SCRIPT_DIR}/../lib/mcp_common.sh"
 
 browser_use_mcp_unset_proxy_env
 browser_use_mcp_prepare_session

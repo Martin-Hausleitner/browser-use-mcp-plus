@@ -67,9 +67,22 @@ def _looks_like_cdp_connect_error(exc: Exception) -> bool:
 	msg = str(exc)
 	return any(token in msg for token in ('connect ECONNREFUSED', 'ECONNREFUSED', 'connect_over_cdp', 'Failed to connect'))
 
+def _repo_root() -> Path:
+	return Path(__file__).resolve().parents[1]
+
+def _default_state_root() -> Path:
+	explicit = (os.getenv('BROWSER_USE_MCP_STATE_DIR') or '').strip()
+	if explicit:
+		return Path(explicit).expanduser()
+	xdg = (os.getenv('XDG_STATE_HOME') or '').strip()
+	if xdg:
+		return Path(xdg).expanduser() / 'browser-use-mcp-plus'
+	return Path('~/.local/state/browser-use-mcp-plus').expanduser()
+
 
 def _ensure_cdp_chrome_ready() -> None:
-	script = Path('~/.browser-use-mcp/bin/ensure_cdp_chrome.sh').expanduser()
+	explicit = (os.getenv('BROWSER_USE_MCP_ENSURE_CHROME_SCRIPT') or '').strip()
+	script = Path(explicit).expanduser() if explicit else (_repo_root() / 'bin' / 'ensure_cdp_chrome.sh')
 	if not script.exists():
 		return
 	subprocess.run(
@@ -171,7 +184,10 @@ def set_browser_keep_open(keep_open: bool) -> dict[str, Any]:
 
 
 def _get_shared_state_path() -> Path:
-	return Path(os.getenv('BROWSER_USE_MCP_SHARED_STATE_PATH', '~/.browser-use-mcp/shared_state.json')).expanduser()
+	explicit = (os.getenv('BROWSER_USE_MCP_SHARED_STATE_PATH') or '').strip()
+	if explicit:
+		return Path(explicit).expanduser()
+	return _default_state_root() / 'shared_state.json'
 
 def _get_viewport_size() -> tuple[int, int]:
 	w = (os.getenv('UI_VIEWPORT_WIDTH') or os.getenv('BROWSER_USE_VIEWPORT_WIDTH') or '1600').strip()

@@ -6,20 +6,26 @@ browser_use_mcp_unset_proxy_env() {
   unset ALL_PROXY all_proxy HTTPS_PROXY https_proxy HTTP_PROXY http_proxy
 }
 
-browser_use_mcp_script_dir() {
+browser_use_mcp_lib_dir() {
   cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd
 }
 
 browser_use_mcp_repo_root() {
-  local script_dir
-  script_dir="$(browser_use_mcp_script_dir)"
-  cd -- "${script_dir}/.." && pwd
+  local lib_dir
+  lib_dir="$(browser_use_mcp_lib_dir)"
+  cd -- "${lib_dir}/.." && pwd
+}
+
+browser_use_mcp_bin_dir() {
+  local root_dir
+  root_dir="$(browser_use_mcp_repo_root)"
+  printf '%s/bin' "${root_dir}"
 }
 
 browser_use_mcp_load_session_lib() {
-  local script_dir lib
-  script_dir="$(browser_use_mcp_script_dir)"
-  lib="${script_dir}/session_lib.sh"
+  local root_dir lib
+  root_dir="$(browser_use_mcp_repo_root)"
+  lib="${root_dir}/lib/session_lib.sh"
   if [[ ! -f "${lib}" ]]; then
     echo "ERROR: Missing ${lib} (cannot resolve per-session browser config)" >&2
     exit 1
@@ -81,9 +87,9 @@ browser_use_mcp_prepare_session() {
   export BROWSER_USE_OWNER_PID
   BROWSER_USE_OWNER_PID="$(browser_use_resolve_owner_pid 2>/dev/null || echo "${PPID}")"
 
-  local script_dir
-  script_dir="$(browser_use_mcp_script_dir)"
-  "${script_dir}/ensure_cdp_chrome.sh"
+  local bin_dir
+  bin_dir="$(browser_use_mcp_bin_dir)"
+  "${bin_dir}/ensure_cdp_chrome.sh"
 
   local mode cdp_url user_data_dir
   mode="${BROWSER_USE_CHROME_MODE,,}"

@@ -1,4 +1,4 @@
-# browser-use MCP helpers (local)
+# browser-use-mcp-plus
 
 Dieses Repo enthält Wrapper-Skripte und kleine MCP-Server, um eine lokale Chrome/Chromium-Instanz per CDP (DevTools Protocol) zuverlässig zu starten/zu finden und dann über MCP zu nutzen:
 
@@ -8,9 +8,10 @@ Dieses Repo enthält Wrapper-Skripte und kleine MCP-Server, um eine lokale Chrom
 
 ## Struktur
 
-- `bin/`: Entry-Points (werden von deinem MCP-Client aufgerufen) + Shared Shell-Libs
+- `bin/`: Entry-Points (werden von deinem MCP-Client aufgerufen)
+- `lib/`: Shared Shell-Libs
 - `servers/`: Python MCP-Server (`ui_describe`, `chrome-devtools`)
-- `sessions/`: Laufzeit-State pro Session (ignored; wird automatisch erzeugt)
+- Runtime-State: standardmäßig unter `$XDG_STATE_HOME/browser-use-mcp-plus/` (oder `~/.local/state/browser-use-mcp-plus/`)
 
 ## Setup (Kurz)
 
@@ -24,6 +25,7 @@ Beispiel-Snippet ohne Secrets: `examples/claude.mcpServers.example.json`.
 ## Wichtige Env-Variablen
 
 - `BROWSER_USE_MCP_PYTHON`: Python-Executable für alle Wrapper (Default: `python3`)
+- `BROWSER_USE_MCP_STATE_DIR`: Root für Runtime-State (Sessions/PIDs/Logs); Default: `~/.local/state/browser-use-mcp-plus`
 - `BROWSER_USE_CHROME_MODE`: `session` (default) | `persistent` | `auto`
 - `CHROME_BIN`: Chrome/Chromium Binary (Default: `google-chrome`)
 - `CDP_HOST` / `CDP_PORT`: Host/Port für persistent mode (Default: `127.0.0.1:9222`)
@@ -31,4 +33,3 @@ Beispiel-Snippet ohne Secrets: `examples/claude.mcpServers.example.json`.
 ## Security
 
 Dieses Repo enthält bewusst **keine** Tokens/Keys. Lege Secrets nur in deinem MCP-Client-Config/Secret-Store ab und committe sie nicht.
-

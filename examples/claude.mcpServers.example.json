@@ -2,7 +2,7 @@
   "mcpServers": {
     "browser-use": {
       "type": "stdio",
-      "command": "~/.browser-use-mcp/bin/browser_use_mcp.sh",
+      "command": "~/.browser-use-mcp-plus/bin/browser_use_mcp.sh",
       "args": [],
       "env": {
         "BROWSER_USE_MCP_PYTHON": "/path/to/your/venv/bin/python",
@@ -15,7 +15,7 @@
     },
     "ui-describe": {
       "type": "stdio",
-      "command": "~/.browser-use-mcp/bin/ui_describe_mcp.sh",
+      "command": "~/.browser-use-mcp-plus/bin/ui_describe_mcp.sh",
       "args": [],
       "env": {
         "BROWSER_USE_MCP_PYTHON": "/path/to/your/venv/bin/python",
@@ -25,7 +25,7 @@
     },
     "chrome-devtools": {
       "type": "stdio",
-      "command": "~/.browser-use-mcp/bin/chrome_devtools_mcp.sh",
+      "command": "~/.browser-use-mcp-plus/bin/chrome_devtools_mcp.sh",
       "args": [],
       "env": {
         "BROWSER_USE_MCP_PYTHON": "/path/to/your/venv/bin/python"
@@ -33,4 +33,3 @@
     }
   }
 }
-
