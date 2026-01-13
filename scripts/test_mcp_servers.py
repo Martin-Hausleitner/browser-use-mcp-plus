@@ -1,20 +1,13 @@
 from __future__ import annotations
 
 import contextlib
-import functools
-import http.server
 import os
-import threading
 import tempfile
 import textwrap
 from pathlib import Path
 
-from ._mcp_stdio_client import MCPStdioClient
-
-
-class _QuietHandler(http.server.SimpleHTTPRequestHandler):
-	def log_message(self, format: str, *args) -> None:  # noqa: A002
-		return
+from mcp_plus.fixture_server import serve_static_dir
+from mcp_plus.stdio_client import MCPStdioClient
 
 
 @contextlib.contextmanager
@@ -40,17 +33,8 @@ def _serve_fixture() -> tuple[str, str]:
 			encoding="utf-8",
 		)
 
-		handler = functools.partial(_QuietHandler, directory=str(root))
-		with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as httpd:
-			port = httpd.server_address[1]
-			url = f"http://127.0.0.1:{port}/"
-			thread = threading.Thread(target=httpd.serve_forever, name="fixture-httpd", daemon=True)
-			thread.start()
-			try:
-				yield url, f"127.0.0.1:{port}"
-			finally:
-				httpd.shutdown()
-				thread.join(timeout=2)
+		with serve_static_dir(root) as (url, url_contains):
+			yield url, url_contains
 
 
 def _assert(cond: bool, msg: str) -> None:

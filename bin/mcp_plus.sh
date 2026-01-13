@@ -27,7 +27,7 @@ case "${cmd}" in
     ;;
   test)
     cd -- "${ROOT_DIR}"
-    exec "${PYTHON_BIN}" -m scripts.test_mcp_servers "$@"
+    exec "${PYTHON_BIN}" -m tests "$@"
     ;;
   -h|--help|help|"")
     usage

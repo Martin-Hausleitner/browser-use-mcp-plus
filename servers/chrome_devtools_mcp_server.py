@@ -13,6 +13,12 @@ from urllib.parse import urlparse
 
 os.environ.setdefault('NODE_NO_WARNINGS', '1')
 
+from _common import (
+	ensure_cdp_chrome_ready as _ensure_cdp_chrome_ready_common,
+	looks_like_cdp_connect_error as _looks_like_cdp_connect_error_common,
+	shared_state_path as _shared_state_path_common,
+)
+
 try:
 	import mcp.server.stdio
 	import mcp.types as types
@@ -62,41 +68,15 @@ def _get_cdp_url() -> str:
 
 
 def _looks_like_cdp_connect_error(exc: Exception) -> bool:
-	msg = str(exc)
-	return any(token in msg for token in ('connect ECONNREFUSED', 'ECONNREFUSED', 'connect_over_cdp', 'Failed to connect'))
-
-def _repo_root() -> Path:
-	return Path(__file__).resolve().parents[1]
-
-def _default_state_root() -> Path:
-	explicit = (os.getenv('BROWSER_USE_MCP_STATE_DIR') or '').strip()
-	if explicit:
-		return Path(explicit).expanduser()
-	xdg = (os.getenv('XDG_STATE_HOME') or '').strip()
-	if xdg:
-		return Path(xdg).expanduser() / 'browser-use-mcp-plus'
-	return Path('~/.local/state/browser-use-mcp-plus').expanduser()
+	return _looks_like_cdp_connect_error_common(exc)
 
 
 def _ensure_cdp_chrome_ready() -> None:
-	explicit = (os.getenv('BROWSER_USE_MCP_ENSURE_CHROME_SCRIPT') or '').strip()
-	script = Path(explicit).expanduser() if explicit else (_repo_root() / 'bin' / 'ensure_cdp_chrome.sh')
-	if not script.exists():
-		return
-	subprocess.run(
-		['bash', str(script)],
-		check=True,
-		stdout=subprocess.DEVNULL,
-		stderr=subprocess.DEVNULL,
-		timeout=45,
-	)
+	_ensure_cdp_chrome_ready_common(timeout_s=45)
 
 
 def _get_shared_state_path() -> Path:
-	explicit = (os.getenv('BROWSER_USE_MCP_SHARED_STATE_PATH') or '').strip()
-	if explicit:
-		return Path(explicit).expanduser()
-	return _default_state_root() / 'shared_state.json'
+	return _shared_state_path_common()
 
 
 def _get_data_dir() -> Path:
@@ -155,6 +135,7 @@ class ChromeDevtoolsRuntime:
 		self._browser_cdp = None
 		self._watch_task: asyncio.Task[None] | None = None
 		self._stop_event = asyncio.Event()
+		self._pages_lock = asyncio.Lock()
 
 		self._page_counter = 0
 		self._pages_by_obj: dict[int, PageEntry] = {}
@@ -328,6 +309,65 @@ class ChromeDevtoolsRuntime:
 			except Exception:
 				pass
 
+	async def _reconnect(self) -> None:
+		"""Reconnect to the current CDP endpoint and reset page attachments.
+
+		This is a best-effort recovery path for flakey CDP/Playwright states where the initial
+		connection reports no contexts/pages (common in headless runs) or becomes stale after a
+		Chrome restart.
+		"""
+
+		from playwright.async_api import async_playwright
+
+		if not self._playwright:
+			self._playwright = await async_playwright().start()
+
+		self.cdp_url = _get_cdp_url()
+
+		async with self._pages_lock:
+			if self._browser:
+				try:
+					await self._browser.close()
+				except Exception:
+					pass
+
+			self._browser = None
+			self._browser_cdp = None
+
+			# Reset per-connection state (page objects become invalid after reconnect).
+			self._page_counter = 0
+			self._pages_by_obj.clear()
+			self._pages_by_id.clear()
+			self._network_order.clear()
+			self._network.clear()
+			self._console.clear()
+
+			# Reset trace state (remote tracing handle is invalid after reconnect).
+			self._trace_active = False
+			self._trace_id = None
+			self._trace_path = None
+			self._trace_started_at_unix = None
+
+			try:
+				self._browser = await self._playwright.chromium.connect_over_cdp(self.cdp_url)
+			except Exception as exc:
+				if not _looks_like_cdp_connect_error(exc):
+					raise
+				_ensure_cdp_chrome_ready()
+				self.cdp_url = _get_cdp_url()
+				self._browser = await self._playwright.chromium.connect_over_cdp(self.cdp_url)
+
+			try:
+				self._browser_cdp = await self._browser.new_browser_cdp_session()
+				try:
+					await self._browser_cdp.send('Network.enable', {})
+				except Exception:
+					pass
+			except Exception:
+				self._browser_cdp = None
+
+		await self._ensure_attached_pages()
+
 	async def _watch_pages_loop(self) -> None:
 		while not self._stop_event.is_set():
 			try:
@@ -351,21 +391,39 @@ class ChromeDevtoolsRuntime:
 		return None
 
 	async def _ensure_attached_pages(self) -> None:
-		if not self._browser:
-			return
-		contexts = list(getattr(self._browser, 'contexts', []))
-		for ctx in contexts:
-			pages = list(getattr(ctx, 'pages', []))
-			for page in pages:
+		async with self._pages_lock:
+			if not self._browser:
+				return
+
+			# Drop stale pages so we don't keep selecting closed targets.
+			for obj_id, entry in list(self._pages_by_obj.items()):
 				try:
-					if getattr(page, 'is_closed', None) and page.is_closed():
-						continue
+					if getattr(entry.page, 'is_closed', None) and entry.page.is_closed():
+						self._pages_by_obj.pop(obj_id, None)
+						self._pages_by_id.pop(entry.page_id, None)
+				except Exception:
+					# If we cannot determine the state, keep it and let tool calls handle errors.
+					continue
+
+			try:
+				contexts = list(getattr(self._browser, 'contexts', []))
+			except Exception:
+				contexts = []
+			for ctx in contexts:
+				try:
+					pages = list(getattr(ctx, 'pages', []))
 				except Exception:
 					continue
-				key = id(page)
-				if key in self._pages_by_obj:
-					continue
-				await self._attach_page(page)
+				for page in pages:
+					try:
+						if getattr(page, 'is_closed', None) and page.is_closed():
+							continue
+					except Exception:
+						continue
+					key = id(page)
+					if key in self._pages_by_obj:
+						continue
+					await self._attach_page(page)
 
 	async def _attach_page(self, page: Any) -> None:
 		if not self._browser:
@@ -580,37 +638,91 @@ class ChromeDevtoolsRuntime:
 		self._append_console(page_id, {'type': 'exception', 'text': msg, 'time_unix': time.time(), 'raw': exc})
 
 	async def _pick_page(self, url_contains: str | None) -> PageEntry:
-		await self._ensure_attached_pages()
+		# In headless runs, Playwright+CDP can sometimes report no contexts/pages briefly.
+		# Wait a little and, if needed, reconnect to recover.
+		last_candidates: list[PageEntry] = []
+		last_state_url: str | None = None
 
-		entries = list(self._pages_by_id.values())
-		if not entries and self._browser and getattr(self._browser, 'contexts', None):
-			ctxs = list(self._browser.contexts)
-			if ctxs:
-				page = await ctxs[0].new_page()
-				await page.goto('about:blank')
-				await self._attach_page(page)
-				entries = list(self._pages_by_id.values())
+		for phase in range(2):
+			deadline = time.time() + 5.0
+			created_fallback = False
 
-		if not entries:
-			raise RuntimeError('No pages available in the connected Chrome session')
+			while time.time() < deadline:
+				await self._ensure_attached_pages()
 
-		state_url = self._state_url()
+				entries: list[PageEntry] = []
+				for entry in list(self._pages_by_id.values()):
+					try:
+						if getattr(entry.page, 'is_closed', None) and entry.page.is_closed():
+							continue
+					except Exception:
+						continue
+					entries.append(entry)
 
-		def score(e: PageEntry) -> int:
-			try:
-				url = e.page.url or ''
-			except Exception:
-				url = ''
-			s = 0
-			if url_contains and url_contains in url:
-				s += 10
-			if state_url and state_url == url:
-				s += 20
-			if url and url not in {'about:blank', 'chrome://newtab/'}:
-				s += 1
-			return s
+				# If we still don't see any pages, try to create one once (can "bootstrap" contexts).
+				if not entries:
+					if not created_fallback and self._browser:
+						created_fallback = True
+						try:
+							ctxs = list(getattr(self._browser, 'contexts', []))
+						except Exception:
+							ctxs = []
+						try:
+							if ctxs:
+								page = await ctxs[0].new_page()
+							else:
+								ctx = await self._browser.new_context()
+								page = await ctx.new_page()
+							await page.goto('about:blank')
+							await self._attach_page(page)
+						except Exception:
+							pass
+					await asyncio.sleep(0.1)
+					continue
 
-		return sorted(entries, key=score, reverse=True)[0]
+				last_state_url = self._state_url()
+
+				def score(e: PageEntry) -> int:
+					try:
+						url = e.page.url or ''
+					except Exception:
+						url = ''
+					s = 0
+					if url_contains and url_contains in url:
+						s += 10
+					if last_state_url and last_state_url == url:
+						s += 20
+					if url and url not in {'about:blank', 'chrome://newtab/'}:
+						s += 1
+					return s
+
+				candidates = sorted(entries, key=score, reverse=True)
+				last_candidates = candidates
+
+				best = candidates[0]
+				best_score = score(best)
+
+				# If the caller provided a selector hint, wait briefly for a matching page to appear.
+				if (url_contains or last_state_url) and best_score < 10:
+					await asyncio.sleep(0.1)
+					continue
+
+				return best
+
+			if phase == 0:
+				try:
+					await self._reconnect()
+				except Exception:
+					# Fall back to returning the best candidate we saw (if any).
+					break
+
+		if last_candidates:
+			return last_candidates[0]
+
+		raise RuntimeError(
+			'No pages available in the connected Chrome session '
+			f'(cdp_url={self.cdp_url!r}, shared_state={str(self.shared_state_path)!r})'
+		)
 
 	async def list_network_requests(self, *, url_contains: str | None, limit: int, include_headers: bool) -> dict[str, Any]:
 		entry = await self._pick_page(url_contains)

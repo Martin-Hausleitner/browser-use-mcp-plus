@@ -1,0 +1,24 @@
+# Testing
+
+## Local test suite
+
+Runs a local static fixture server, starts all MCP servers via stdio, navigates with `browser-use`, then verifies:
+
+- MCP init + `tools/list`
+- `chrome-devtools` JS eval + console + network capture
+- `ui-describe` overlay cleanup + deterministic fallback (no LLM configured)
+- `set_browser_keep_open`
+
+Command:
+
+```bash
+cd ~/.browser-use-mcp-plus
+BROWSER_USE_MCP_PYTHON=/path/to/venv/bin/python bin/mcp_plus.sh test
+```
+
+## Example
+
+```bash
+cd ~/.browser-use-mcp-plus
+BROWSER_USE_MCP_PYTHON=/path/to/venv/bin/python bin/mcp_plus.sh example
+```

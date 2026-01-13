@@ -12,6 +12,12 @@ from typing import Any
 
 os.environ.setdefault('NODE_NO_WARNINGS', '1')
 
+from _common import (
+	ensure_cdp_chrome_ready as _ensure_cdp_chrome_ready_common,
+	looks_like_cdp_connect_error as _looks_like_cdp_connect_error_common,
+	shared_state_path as _shared_state_path_common,
+)
+
 from browser_use.llm.messages import ContentPartImageParam, ContentPartTextParam, ImageURL, SystemMessage, UserMessage
 from browser_use.llm.openai.chat import ChatOpenAI
 
@@ -64,34 +70,11 @@ def _get_cdp_url() -> str:
 
 
 def _looks_like_cdp_connect_error(exc: Exception) -> bool:
-	msg = str(exc)
-	return any(token in msg for token in ('connect ECONNREFUSED', 'ECONNREFUSED', 'connect_over_cdp', 'Failed to connect'))
-
-def _repo_root() -> Path:
-	return Path(__file__).resolve().parents[1]
-
-def _default_state_root() -> Path:
-	explicit = (os.getenv('BROWSER_USE_MCP_STATE_DIR') or '').strip()
-	if explicit:
-		return Path(explicit).expanduser()
-	xdg = (os.getenv('XDG_STATE_HOME') or '').strip()
-	if xdg:
-		return Path(xdg).expanduser() / 'browser-use-mcp-plus'
-	return Path('~/.local/state/browser-use-mcp-plus').expanduser()
+	return _looks_like_cdp_connect_error_common(exc)
 
 
 def _ensure_cdp_chrome_ready() -> None:
-	explicit = (os.getenv('BROWSER_USE_MCP_ENSURE_CHROME_SCRIPT') or '').strip()
-	script = Path(explicit).expanduser() if explicit else (_repo_root() / 'bin' / 'ensure_cdp_chrome.sh')
-	if not script.exists():
-		return
-	subprocess.run(
-		['bash', str(script)],
-		check=True,
-		stdout=subprocess.DEVNULL,
-		stderr=subprocess.DEVNULL,
-		timeout=45,
-	)
+	_ensure_cdp_chrome_ready_common(timeout_s=45)
 
 def _pid_alive(pid: int) -> bool:
 	try:
@@ -184,10 +167,7 @@ def set_browser_keep_open(keep_open: bool) -> dict[str, Any]:
 
 
 def _get_shared_state_path() -> Path:
-	explicit = (os.getenv('BROWSER_USE_MCP_SHARED_STATE_PATH') or '').strip()
-	if explicit:
-		return Path(explicit).expanduser()
-	return _default_state_root() / 'shared_state.json'
+	return _shared_state_path_common()
 
 def _get_viewport_size() -> tuple[int, int]:
 	w = (os.getenv('UI_VIEWPORT_WIDTH') or os.getenv('BROWSER_USE_VIEWPORT_WIDTH') or '1600').strip()
