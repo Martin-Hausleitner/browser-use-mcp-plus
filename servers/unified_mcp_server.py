@@ -260,6 +260,89 @@ class UnifiedMCPServer:
 					'required': ['command'],
 				},
 			),
+			types.Tool(
+				name='agent_s3_vm_selftest',
+				description='Build/run the Agent S3 VM (Docker) and run a deterministic environment selftest.',
+				inputSchema={
+					'type': 'object',
+					'properties': {
+						'image': {
+							'type': 'string',
+							'description': 'Docker image tag to use/build.',
+							'default': 'mcp-plus-agent-s3:0.3',
+						},
+						'force_build': {'type': 'boolean', 'default': False},
+						'repo_path': {
+							'type': 'string',
+							'description': 'Host repo path to mount at /workspace/repo (skips clone).',
+						},
+						'repo_rw': {
+							'type': 'boolean',
+							'description': 'When mounting repo_path, mount it read-write (default: read-only).',
+							'default': False,
+						},
+						'repo_url': {
+							'type': 'string',
+							'description': 'Git URL to clone inside the VM at /workspace/repo.',
+						},
+						'host_network': {
+							'type': 'boolean',
+							'description': 'Use --network=host (useful for localhost API proxies).',
+							'default': False,
+						},
+						'timeout_s': {'type': 'integer', 'default': 900},
+					},
+				},
+			),
+			types.Tool(
+				name='agent_s3_vm_run_task',
+				description='Start the Agent S3 VM (Docker), optionally clone/mount a repo, and run a task.',
+				inputSchema={
+					'type': 'object',
+					'properties': {
+						'image': {
+							'type': 'string',
+							'description': 'Docker image tag to use/build.',
+							'default': 'mcp-plus-agent-s3:0.3',
+						},
+						'force_build': {'type': 'boolean', 'default': False},
+						'task': {'type': 'string', 'description': 'Task instruction to run inside the VM.'},
+						'steps': {'type': 'integer', 'default': 15},
+						'dry_run': {'type': 'boolean', 'default': False},
+						'unsafe_exec': {'type': 'boolean', 'default': False},
+						'repo_path': {
+							'type': 'string',
+							'description': 'Host repo path to mount at /workspace/repo (skips clone).',
+						},
+						'repo_rw': {
+							'type': 'boolean',
+							'description': 'When mounting repo_path, mount it read-write (default: read-only).',
+							'default': False,
+						},
+						'repo_url': {
+							'type': 'string',
+							'description': 'Git URL to clone inside the VM at /workspace/repo.',
+						},
+						'workdir': {
+							'type': 'string',
+							'description': 'Workdir inside container (default: /workspace/repo).',
+							'default': '/workspace/repo',
+						},
+						'host_network': {
+							'type': 'boolean',
+							'description': 'Use --network=host (useful for localhost API proxies).',
+							'default': False,
+						},
+						'env': {
+							'type': 'object',
+							'description': 'Extra env vars passed to the VM container.',
+							'additionalProperties': {'type': 'string'},
+						},
+						'timeout_s': {'type': 'integer', 'default': 3600},
+					},
+					'required': ['task'],
+				},
+			),
 		]
 
 		async def _handle_context7_resolve(args: dict[str, Any]) -> list[types.Content]:
@@ -405,10 +488,201 @@ class UnifiedMCPServer:
 			except Exception as exc:
 				return [types.TextContent(type='text', text=f'Error: {type(exc).__name__}: {exc}')]
 
+		def _wants_host_network(explicit: bool) -> bool:
+			if explicit:
+				return True
+			base = (os.getenv('OPENAI_API_BASE') or os.getenv('OPENAI_BASE_URL') or '').strip().lower()
+			return any(token in base for token in ('localhost', '127.0.0.1'))
+
+		def _docker_image_exists(tag: str) -> bool:
+			try:
+				subprocess.run(['docker', 'image', 'inspect', tag], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+				return True
+			except Exception:
+				return False
+
+		def _ensure_agent_s3_vm_image(tag: str, *, force: bool, timeout_s: int) -> dict[str, Any]:
+			dockerfile = self._repo_root / 'vm' / 'agent_s3' / 'Dockerfile'
+			context_dir = self._repo_root / 'vm' / 'agent_s3'
+			if not dockerfile.exists():
+				raise RuntimeError(f'Missing Dockerfile: {dockerfile}')
+			if force or not _docker_image_exists(tag):
+				proc = subprocess.run(
+					['docker', 'build', '-t', tag, '-f', str(dockerfile), str(context_dir)],
+					stdout=subprocess.PIPE,
+					stderr=subprocess.PIPE,
+					text=True,
+					timeout=timeout_s,
+				)
+				if proc.returncode != 0:
+					raise RuntimeError(f'docker build failed (code {proc.returncode}):\n{proc.stderr}')
+				return {'built': True, 'stdout': proc.stdout, 'stderr': proc.stderr}
+			return {'built': False}
+
+		def _run_agent_s3_vm(
+			*,
+			tag: str,
+			mode: str,
+			repo_path: str,
+			repo_rw: bool,
+			repo_url: str,
+			task: str,
+			steps: int,
+			workdir: str,
+			dry_run: bool,
+			unsafe_exec: bool,
+			host_network: bool,
+			env: dict[str, str],
+			timeout_s: int,
+		) -> dict[str, Any]:
+			if repo_path and repo_url:
+				raise RuntimeError('Provide only one of repo_path or repo_url')
+
+			docker_cmd: list[str] = ['docker', 'run', '--rm']
+			if host_network:
+				docker_cmd += ['--network', 'host']
+
+			if repo_path:
+				host_repo = Path(repo_path).expanduser().resolve()
+				if not host_repo.exists() or not host_repo.is_dir():
+					raise RuntimeError(f'repo_path not found: {repo_path}')
+				mode_flag = 'rw' if repo_rw else 'ro'
+				docker_cmd += ['-v', f'{str(host_repo)}:/workspace/repo:{mode_flag}']
+			elif repo_url:
+				docker_cmd += ['-e', f'VM_REPO_URL={repo_url}']
+
+			# Tool selection.
+			docker_cmd += ['-e', f'VM_MODE={mode}']
+			if task:
+				docker_cmd += ['-e', f'VM_TASK={task}']
+			if steps:
+				docker_cmd += ['-e', f'VM_STEPS={int(steps)}']
+			if workdir:
+				docker_cmd += ['-e', f'VM_WORKDIR={workdir}']
+
+			# Pass-through common agent env.
+			pass_env = {
+				'CHUTES_API_KEY': os.getenv('CHUTES_API_KEY', ''),
+				'BASE_URL': os.getenv('BASE_URL', ''),
+				'VISION_MODEL': os.getenv('VISION_MODEL', ''),
+				'ENGINE_TYPE': os.getenv('ENGINE_TYPE', ''),
+				'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY', ''),
+				'OPENAI_API_BASE': os.getenv('OPENAI_API_BASE', ''),
+				'OPENAI_BASE_URL': os.getenv('OPENAI_BASE_URL', ''),
+			}
+			for k, v in pass_env.items():
+				if v:
+					docker_cmd += ['-e', f'{k}={v}']
+			for k, v in (env or {}).items():
+				if not k:
+					continue
+				docker_cmd += ['-e', f'{k}={v}']
+
+			# Flags for runner.
+			if dry_run:
+				docker_cmd += ['-e', 'VM_DRY_RUN=true']
+			if unsafe_exec:
+				docker_cmd += ['-e', 'VM_UNSAFE_EXEC=true']
+
+			docker_cmd += [tag]
+
+			proc = subprocess.run(
+				docker_cmd,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				text=True,
+				timeout=timeout_s,
+			)
+			return {'cmd': docker_cmd, 'exit_code': proc.returncode, 'stdout': proc.stdout, 'stderr': proc.stderr}
+
+		async def _handle_agent_s3_vm_selftest(args: dict[str, Any]) -> list[types.Content]:
+			tag = (args.get('image') or 'mcp-plus-agent-s3:0.3').strip()
+			force_build = bool(args.get('force_build', False))
+			repo_path = (args.get('repo_path') or '').strip()
+			repo_rw = bool(args.get('repo_rw', False))
+			repo_url = (args.get('repo_url') or '').strip()
+			timeout_s = int(args.get('timeout_s', 900) or 900)
+			host_network = _wants_host_network(bool(args.get('host_network', False)))
+
+			try:
+				subprocess.run(['docker', 'version'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+				build_info = await asyncio.to_thread(_ensure_agent_s3_vm_image, tag, force=force_build, timeout_s=timeout_s)
+				run_info = await asyncio.to_thread(
+					_run_agent_s3_vm,
+					tag=tag,
+					mode='selftest',
+					repo_path=repo_path,
+					repo_rw=repo_rw,
+					repo_url=repo_url,
+					task='',
+					steps=0,
+					workdir='/workspace/repo',
+					dry_run=False,
+					unsafe_exec=False,
+					host_network=host_network,
+					env={},
+					timeout_s=timeout_s,
+				)
+				return [
+					types.TextContent(
+						type='text',
+						text=json.dumps({'image': tag, 'build': build_info, 'run': run_info}, ensure_ascii=False, indent=2),
+					)
+				]
+			except Exception as exc:
+				return [types.TextContent(type='text', text=f'Error: {type(exc).__name__}: {exc}')]
+
+		async def _handle_agent_s3_vm_run_task(args: dict[str, Any]) -> list[types.Content]:
+			tag = (args.get('image') or 'mcp-plus-agent-s3:0.3').strip()
+			force_build = bool(args.get('force_build', False))
+			task = (args.get('task') or '').strip()
+			if not task:
+				return [types.TextContent(type='text', text='Error: task is required')]
+			steps = int(args.get('steps', 15) or 15)
+			workdir = (args.get('workdir') or '/workspace/repo').strip()
+			repo_path = (args.get('repo_path') or '').strip()
+			repo_rw = bool(args.get('repo_rw', False))
+			repo_url = (args.get('repo_url') or '').strip()
+			dry_run = bool(args.get('dry_run', False))
+			unsafe_exec = bool(args.get('unsafe_exec', False))
+			timeout_s = int(args.get('timeout_s', 3600) or 3600)
+			host_network = _wants_host_network(bool(args.get('host_network', False)))
+			env = args.get('env') if isinstance(args.get('env'), dict) else {}
+
+			try:
+				subprocess.run(['docker', 'version'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+				build_info = await asyncio.to_thread(_ensure_agent_s3_vm_image, tag, force=force_build, timeout_s=timeout_s)
+				run_info = await asyncio.to_thread(
+					_run_agent_s3_vm,
+					tag=tag,
+					mode='task',
+					repo_path=repo_path,
+					repo_rw=repo_rw,
+					repo_url=repo_url,
+					task=task,
+					steps=steps,
+					workdir=workdir,
+					dry_run=dry_run,
+					unsafe_exec=unsafe_exec,
+					host_network=host_network,
+					env=env,
+					timeout_s=timeout_s,
+				)
+				return [
+					types.TextContent(
+						type='text',
+						text=json.dumps({'image': tag, 'build': build_info, 'run': run_info}, ensure_ascii=False, indent=2),
+					)
+				]
+			except Exception as exc:
+				return [types.TextContent(type='text', text=f'Error: {type(exc).__name__}: {exc}')]
+
 		self._internal_handlers = {
 			'context7_resolve_library_id': _handle_context7_resolve,
 			'context7_query_docs': _handle_context7_query,
 			'docker_vm_run': _handle_docker_vm_run,
+			'agent_s3_vm_selftest': _handle_agent_s3_vm_selftest,
+			'agent_s3_vm_run_task': _handle_agent_s3_vm_run_task,
 		}
 
 	def _init_children(self) -> None:

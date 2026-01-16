@@ -3,6 +3,7 @@
 Dieses Repo enthält Wrapper-Skripte und kleine MCP-Server, um eine lokale Chrome/Chromium-Instanz per CDP (DevTools Protocol) zuverlässig zu starten/zu finden und dann über MCP zu nutzen:
 
 - `mcp-plus` (Unified MCP: proxy für `browser-use`/`ui-describe`/`chrome-devtools` + Context7 + Docker-Runner)
+- `agent-s3-vm` (Docker-"VM" Selftest/Task-Runner für Agent S3)
 - `browser-use` (Upstream `browser_use.mcp` via Python)
 - `ui-describe` (Screenshot → Textbeschreibung via Vision-LLM, mit Overlay-Cleanup)
 - `chrome-devtools` (Network/Console/Performance/JS-eval via CDP)

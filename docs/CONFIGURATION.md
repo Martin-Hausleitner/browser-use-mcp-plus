@@ -59,3 +59,14 @@ Optional kannst du Child-Server deaktivieren:
 
 Der Tool `docker_vm_run` ruft lokal `docker` auf und startet einen ephemeren Container.
 Voraussetzung: laufender Docker-Daemon + Zugriff für den User.
+
+### Agent S3 VM (Docker)
+
+Der Unified-Server bietet zusätzlich zwei Tools für eine gekapselte Linux-"VM" (Docker) mit vorinstalliertem `gui-agents` (Agent S3):
+
+- `agent_s3_vm_selftest`: baut (falls nötig) das Image und führt einen deterministischen Selftest aus (kein API-Key nötig).
+- `agent_s3_vm_run_task`: startet die VM und führt einen Task via Agent S3 aus (benötigt i.d.R. `CHUTES_API_KEY` oder `OPENAI_API_KEY`).
+
+Repo-Handling:
+- `repo_path`: mountet ein Host-Repo nach `/workspace/repo` (kein Clone in der VM nötig)
+- `repo_url`: clont in der VM nach `/workspace/repo`

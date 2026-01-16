@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import textwrap
 import os
+import json
 from pathlib import Path
 
 from mcp_plus.fixture_server import serve_static_dir
@@ -87,6 +88,8 @@ def test_unified_smoke(_: Harness) -> None:
 				assert "chrome-devtools.evaluate_script" in names
 				assert "context7_resolve_library_id" in names
 				assert "docker_vm_run" in names
+				assert "agent_s3_vm_selftest" in names
+				assert "agent_s3_vm_run_task" in names
 
 				# Proxy: navigate + evaluate title
 				unified.request(
@@ -128,6 +131,20 @@ def test_unified_smoke(_: Harness) -> None:
 				out = tool_json(docker)
 				assert out.get("exit_code") == 0
 				assert "hello-from-docker" in (out.get("stdout") or "")
+
+				# VM: Agent S3 environment selftest inside Docker (deterministic; no API key required).
+				vm = unified.request(
+					"tools/call",
+					{
+						"name": "agent_s3_vm_selftest",
+						"arguments": {"repo_path": str(repo_root), "timeout_s": 900},
+					},
+					timeout_s=900.0,
+				)
+				vm_out = tool_json(vm)
+				assert vm_out.get("run", {}).get("exit_code") == 0, vm_out
+				vm_json = json.loads((vm_out.get("run", {}).get("stdout") or "").strip())
+				assert vm_json.get("ok") is True, vm_json
 			finally:
 				try:
 					unified.close()

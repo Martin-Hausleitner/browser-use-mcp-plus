@@ -9,6 +9,7 @@ Runs a local static fixture server, starts all MCP servers via stdio, navigates 
 - `ui-describe` overlay cleanup + deterministic fallback (no LLM configured)
 - `set_browser_keep_open`
 - Unified server (`bin/unified_mcp.sh`) tool proxying + internal tools (Context7 config error, Docker runner)
+- Agent S3 VM selftest (Docker image build + Xvfb + accessibility tree)
 
 Command:
 
