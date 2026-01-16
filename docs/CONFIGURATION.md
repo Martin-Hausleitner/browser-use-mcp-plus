@@ -35,3 +35,27 @@ If `$DISPLAY` is not set, `bin/ensure_cdp_chrome.sh` refuses to start headless C
 - `CHROME_BIN`: chrome/chromium executable (default `google-chrome`)
 - `CDP_HOST` / `CDP_PORT`: persistent mode CDP endpoint
 
+## Unified MCP Server (`bin/unified_mcp.sh`)
+
+Der Unified-Server exposed die Tools aus `browser-use`, `ui-describe` und `chrome-devtools` unter Namespaces:
+
+- `browser-use.<tool>`
+- `ui-describe.<tool>`
+- `chrome-devtools.<tool>`
+
+Optional kannst du Child-Server deaktivieren:
+
+- `MCP_PLUS_ENABLE_BROWSER_USE=true|false`
+- `MCP_PLUS_ENABLE_UI_DESCRIBE=true|false`
+- `MCP_PLUS_ENABLE_CHROME_DEVTOOLS=true|false`
+
+### Context7
+
+- `CONTEXT7_API_KEY`: API Key (empfohlen; ohne Key gibt es einen deterministischen Fehler)
+- `CONTEXT7_BASE_URL`: Default `https://context7.com`
+- `CONTEXT7_ALLOW_UNAUTHENTICATED=true`: versucht Calls ohne Key (nicht empfohlen)
+
+### Docker VM Runner
+
+Der Tool `docker_vm_run` ruft lokal `docker` auf und startet einen ephemeren Container.
+Voraussetzung: laufender Docker-Daemon + Zugriff für den User.

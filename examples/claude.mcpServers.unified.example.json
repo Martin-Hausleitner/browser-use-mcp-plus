@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "mcp-plus": {
+      "type": "stdio",
+      "command": "~/.browser-use-mcp-plus/bin/unified_mcp.sh",
+      "args": [],
+      "env": {
+        "BROWSER_USE_MCP_PYTHON": "/path/to/your/venv/bin/python",
+        "BROWSER_USE_CHROME_MODE": "session",
+        "OPENAI_API_BASE": "http://localhost:8317/v1",
+        "OPENAI_API_KEY": "YOUR_KEY_OR_PROXY",
+        "BROWSER_USE_LLM_MODEL": "gpt-4.1",
+        "BROWSER_USE_VISION_MODEL": "gpt-4.1",
+        "UI_VISION_MODEL": "gpt-4.1",
+        "CONTEXT7_API_KEY": "YOUR_CONTEXT7_KEY"
+      }
+    }
+  }
+}

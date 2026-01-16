@@ -2,6 +2,7 @@
 
 Dieses Repo enthält Wrapper-Skripte und kleine MCP-Server, um eine lokale Chrome/Chromium-Instanz per CDP (DevTools Protocol) zuverlässig zu starten/zu finden und dann über MCP zu nutzen:
 
+- `mcp-plus` (Unified MCP: proxy für `browser-use`/`ui-describe`/`chrome-devtools` + Context7 + Docker-Runner)
 - `browser-use` (Upstream `browser_use.mcp` via Python)
 - `ui-describe` (Screenshot → Textbeschreibung via Vision-LLM, mit Overlay-Cleanup)
 - `chrome-devtools` (Network/Console/Performance/JS-eval via CDP)
@@ -23,7 +24,9 @@ Dieses Repo enthält Wrapper-Skripte und kleine MCP-Server, um eine lokale Chrom
    - Setze dafür `BROWSER_USE_MCP_PYTHON=/pfad/zum/python` (z.B. ein venv), damit die Wrapper nicht hardcodiert sind.
 3) Konfiguriere deinen MCP-Client so, dass er die Wrapper in `bin/` startet.
 
-Beispiel-Snippet ohne Secrets: `examples/claude.mcpServers.example.json`.
+Beispiele ohne Secrets:
+- Multi-Server (legacy): `examples/claude.mcpServers.example.json`
+- Unified (empfohlen): `examples/claude.mcpServers.unified.example.json`
 
 ## Quickstart
 
