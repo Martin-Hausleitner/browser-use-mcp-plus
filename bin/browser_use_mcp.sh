@@ -7,6 +7,7 @@ source "${SCRIPT_DIR}/../lib/mcp_common.sh"
 
 browser_use_mcp_unset_proxy_env
 browser_use_mcp_prepare_session
+browser_use_mcp_prepare_browser_use_config
 
 PYTHON_BIN="$(browser_use_mcp_resolve_python)"
 exec "${PYTHON_BIN}" -m browser_use.mcp

@@ -341,6 +341,28 @@ start_chrome() {
   (
     flock 9
 
+    # IMPORTANT: In session mode, multiple MCP server processes can start concurrently and each can
+    # pre-select a different random port *before* acquiring the lock. Once the first process has
+    # written chrome.json, treat it as the source of truth to avoid other processes falsely thinking
+    # "their" CDP_URL is down and restarting Chrome on a different port.
+    if [[ -n "${STATE_FILE:-}" ]] && [[ -f "${STATE_FILE}" ]]; then
+      state_port="$("${PYTHON_BIN}" - "${STATE_FILE}" <<'PY'
+import json, sys
+p = sys.argv[1]
+try:
+  obj = json.loads(open(p, "r", encoding="utf-8").read())
+  port = int(obj.get("cdp_port") or 0)
+  print(port if port > 0 else "")
+except Exception:
+  print("")
+PY
+)"
+      if [[ "${state_port}" =~ ^[0-9]+$ ]] && [[ "${state_port}" != "0" ]]; then
+        CDP_PORT="${state_port}"
+        CDP_URL="http://${CDP_HOST}:${CDP_PORT}"
+      fi
+    fi
+
     if is_cdp_ready; then
     # Ensure a session state file exists even if the browser was already running.
     if [[ -n "${STATE_FILE:-}" ]]; then

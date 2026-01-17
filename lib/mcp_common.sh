@@ -126,3 +126,64 @@ PY
   export BROWSER_USE_USER_DATA_DIR="${user_data_dir}"
   export BROWSER_USE_MCP_SHARED_STATE_PATH="${session_dir}/shared_state.json"
 }
+
+browser_use_mcp_prepare_browser_use_config() {
+  # browser_use.mcp reads its own config.json; by default it launches a separate browser
+  # and won't share the CDP Chrome started by ensure_cdp_chrome.sh. To keep all MCP
+  # servers on the same Chrome session, write a minimal browser-use config that pins
+  # the BrowserProfile to our session's CDP URL + user-data-dir.
+  #
+  # Opt-out: set BROWSER_USE_MCP_DISABLE_BROWSER_USE_CONFIG=1
+  if [[ -n "${BROWSER_USE_MCP_DISABLE_BROWSER_USE_CONFIG:-}" ]]; then
+    return 0
+  fi
+
+  # Respect explicit config path if caller already set one.
+  if [[ -n "${BROWSER_USE_CONFIG_PATH:-}" ]]; then
+    return 0
+  fi
+
+  local shared_state_path session_dir config_path python_bin
+  shared_state_path="${BROWSER_USE_MCP_SHARED_STATE_PATH:-}"
+  if [[ -z "${shared_state_path}" ]]; then
+    return 0
+  fi
+  session_dir="$(dirname "${shared_state_path}")"
+  config_path="${session_dir}/browser_use.config.json"
+
+  export BROWSER_USE_CONFIG_PATH="${config_path}"
+  python_bin="$(browser_use_mcp_resolve_python)"
+
+  "${python_bin}" - "${config_path}" <<'PY'
+import json
+import os
+import sys
+import uuid
+from pathlib import Path
+
+config_path = Path(sys.argv[1]).expanduser()
+cdp_url = (os.environ.get("BROWSER_USE_CDP_URL") or "").strip()
+user_data_dir = (os.environ.get("BROWSER_USE_USER_DATA_DIR") or "").strip()
+
+if not cdp_url:
+    raise SystemExit(0)
+
+config_path.parent.mkdir(parents=True, exist_ok=True)
+profile_id = str(uuid.uuid4())
+data = {
+    "browser_profile": {
+        profile_id: {
+            "id": profile_id,
+            "default": True,
+            "cdp_url": cdp_url,
+            "user_data_dir": user_data_dir or None,
+            "keep_alive": True,
+        }
+    },
+    # Keep empty by default so browser-use doesn't assume an LLM is configured.
+    "llm": {},
+    "agent": {},
+}
+config_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+}
