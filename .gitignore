@@ -7,6 +7,10 @@ devtools/
 __pycache__/
 *.pyc
 
+# Virtualenvs
+.venv/
+venv/
+
 # Local state files
 shared_state.json
 *.pid
@@ -16,4 +20,3 @@ shared_state.json
 .DS_Store
 .idea/
 .vscode/
-

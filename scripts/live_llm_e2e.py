@@ -40,6 +40,12 @@ def _load_codex_auth_openai_key() -> str | None:
 	val = obj.get("OPENAI_API_KEY") if isinstance(obj, dict) else None
 	if isinstance(val, str) and val.strip():
 		return val.strip()
+	# Fallback: Codex CLI often stores OAuth tokens (access_token). Some OpenAI-compatible
+	# gateways accept this as a Bearer token.
+	tokens = obj.get("tokens") if isinstance(obj, dict) else None
+	access = tokens.get("access_token") if isinstance(tokens, dict) else None
+	if isinstance(access, str) and access.strip():
+		return access.strip()
 	return None
 
 
@@ -422,7 +428,9 @@ def _openai_chat(
 		if attempt < max_retries:
 			time.sleep(0.75 * (2**attempt) + random.random() * 0.2)
 			continue
-		raise RuntimeError("OpenAI request failed") from last_err
+		if last_err is None:
+			raise RuntimeError("OpenAI request failed (unknown error)")
+		raise RuntimeError(f"OpenAI request failed: {type(last_err).__name__}: {last_err}") from last_err
 
 
 @dataclass
@@ -433,6 +441,7 @@ class LiveRunResult:
 	final_text: str
 	before_metrics: dict[str, Any]
 	after_metrics: dict[str, Any]
+	ui_describe_used_llm: bool | None
 
 
 def _extract_eval_result(text: str) -> dict[str, Any]:
@@ -476,8 +485,8 @@ def run_live_e2e(*, model: str, max_iters: int, openai_timeout_s: float, openai_
 			"OPENAI_API_KEY": openai_key,
 			"OPENAI_BASE_URL": openai_base,
 			"CONTEXT7_API_KEY": context7_key,
-			# Make UI describe default usable for OpenAI as well.
-			"UI_VISION_MODEL": os.getenv("UI_VISION_MODEL", "gpt-4o-mini"),
+			# Default vision model to the same model used by the live run (override via UI_VISION_MODEL).
+			"UI_VISION_MODEL": (os.getenv("UI_VISION_MODEL") or model),
 		}
 
 		with serve_static_dir(site_dir) as (url, url_contains):
@@ -574,7 +583,9 @@ def run_live_e2e(*, model: str, max_iters: int, openai_timeout_s: float, openai_
 					"- contrast >= 4.5 (Button #primary Text vs Background)\n\n"
 					"Nutze mindestens einmal:\n"
 					"- context7_resolve_library_id + context7_query_docs\n"
+					"- browser-use.browser_navigate\n"
 					"- ui-describe.ui_describe\n"
+					"- chrome-devtools.evaluate_script\n"
 					"- write_file (um styles.css zu fixen)\n"
 					"Du darfst nur in index.html/styles.css schreiben."
 				)
@@ -615,6 +626,7 @@ def run_live_e2e(*, model: str, max_iters: int, openai_timeout_s: float, openai_
 					return "ok"
 
 				final_text = ""
+				ui_describe_used_llm: bool | None = None
 				for _ in range(max_iters):
 					chat = _openai_chat(
 						api_key=openai_key,
@@ -646,7 +658,10 @@ def run_live_e2e(*, model: str, max_iters: int, openai_timeout_s: float, openai_
 
 							try:
 								if fn_name == "mcp_tool_call":
-									out = _run_mcp_tool(str(args.get("name") or ""), args.get("arguments") or {})
+									mcp_name = str(args.get("name") or "")
+									out = _run_mcp_tool(mcp_name, args.get("arguments") or {})
+									if mcp_name == "ui-describe.ui_describe":
+										ui_describe_used_llm = "LLM not configured for ui-describe" not in out
 								elif fn_name == "read_file":
 									out = _read_fixture(str(args.get("path") or ""))
 								elif fn_name == "write_file":
@@ -675,8 +690,14 @@ def run_live_e2e(*, model: str, max_iters: int, openai_timeout_s: float, openai_
 				mcp_names = {str((t.get("args") or {}).get("name") or "") for t in mcp_called}
 				if not {"context7_resolve_library_id", "context7_query_docs"} <= mcp_names:
 					raise RuntimeError(f"LLM did not use Context7 tools (saw: {sorted(mcp_names)})")
+				if "browser-use.browser_navigate" not in mcp_names:
+					raise RuntimeError("LLM did not call browser-use.browser_navigate")
 				if "ui-describe.ui_describe" not in mcp_names:
 					raise RuntimeError("LLM did not call ui-describe.ui_describe")
+				if ui_describe_used_llm is False:
+					raise RuntimeError("ui-describe did not use an LLM (missing/invalid OPENAI_* config?)")
+				if "chrome-devtools.evaluate_script" not in mcp_names:
+					raise RuntimeError("LLM did not call chrome-devtools.evaluate_script")
 
 				# Recompute metrics
 				unified.request(
@@ -705,6 +726,7 @@ def run_live_e2e(*, model: str, max_iters: int, openai_timeout_s: float, openai_
 					final_text=final_text,
 					before_metrics=before_metrics,
 					after_metrics=after_metrics,
+					ui_describe_used_llm=ui_describe_used_llm,
 				)
 			finally:
 				try:
@@ -739,6 +761,7 @@ def main(argv: list[str]) -> int:
 				"model": result.model,
 				"before_metrics": result.before_metrics,
 				"after_metrics": result.after_metrics,
+				"ui_describe_used_llm": result.ui_describe_used_llm,
 				"tool_calls": result.tool_calls,
 				"final_text": result.final_text,
 			},

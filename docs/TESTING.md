@@ -37,10 +37,11 @@ Runs a real tool-using LLM loop against the unified MCP server:
 Required env:
 
 - `BROWSER_USE_MCP_PYTHON` (python with `mcp`, `browser-use`, `playwright`, etc.)
-- `OPENAI_API_KEY`
 - `OPENAI_BASE_URL` (e.g. `https://api.openai.com/v1`) or `OPENAI_API_BASE`
-- `CONTEXT7_API_KEY`
-- Optional: `UI_VISION_MODEL` (default: `gpt-4o-mini`)
+- `OPENAI_API_KEY` (or a valid `~/.codex/auth.json` from `codex login`)
+- `CONTEXT7_API_KEY` (or `~/.codex/config.toml` `mcp_servers.context7` `--api-key …`)
+- Optional: `MCP_PLUS_LIVE_MODEL` / `--model` (defaults to `gpt-4o-mini`)
+- Optional: `UI_VISION_MODEL` (defaults to the same as `--model`)
 
 Command:
 
