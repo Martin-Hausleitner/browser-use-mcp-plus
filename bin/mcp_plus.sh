@@ -8,6 +8,7 @@ usage() {
 Usage:
   bin/mcp_plus.sh example
   bin/mcp_plus.sh test
+  bin/mcp_plus.sh test-live
 
 Env:
   BROWSER_USE_MCP_PYTHON   Python used by MCP server wrappers
@@ -28,6 +29,10 @@ case "${cmd}" in
   test)
     cd -- "${ROOT_DIR}"
     exec "${PYTHON_BIN}" -m tests "$@"
+    ;;
+  test-live)
+    cd -- "${ROOT_DIR}"
+    exec "${PYTHON_BIN}" -m scripts.live_llm_e2e "$@"
     ;;
   -h|--help|help|"")
     usage
