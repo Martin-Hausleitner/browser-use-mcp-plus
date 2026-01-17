@@ -53,3 +53,26 @@ export OPENAI_BASE_URL=https://api.openai.com/v1
 export CONTEXT7_API_KEY=...
 bin/mcp_plus.sh test-live
 ```
+
+## Live suite (multiple scenarios)
+
+Lists models from your OpenAI-compatible endpoint:
+
+```bash
+cd ~/.browser-use-mcp-plus
+export BROWSER_USE_MCP_PYTHON=/path/to/venv/bin/python
+export OPENAI_BASE_URL=http://your-host:port/v1
+export OPENAI_API_KEY=...
+bin/mcp_plus.sh test-live-suite --list-models
+```
+
+Runs multiple end-to-end scenarios (UI fix + console fix + network fix) with the same `--model`:
+
+```bash
+cd ~/.browser-use-mcp-plus
+export BROWSER_USE_MCP_PYTHON=/path/to/venv/bin/python
+export OPENAI_BASE_URL=http://your-host:port/v1
+export OPENAI_API_KEY=...
+export CONTEXT7_API_KEY=...
+bin/mcp_plus.sh test-live-suite --model gemini-3-pro-preview --require-model --runs 1
+```

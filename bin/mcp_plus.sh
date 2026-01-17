@@ -9,6 +9,7 @@ Usage:
   bin/mcp_plus.sh example
   bin/mcp_plus.sh test
   bin/mcp_plus.sh test-live
+  bin/mcp_plus.sh test-live-suite
 
 Env:
   BROWSER_USE_MCP_PYTHON   Python used by MCP server wrappers
@@ -33,6 +34,10 @@ case "${cmd}" in
   test-live)
     cd -- "${ROOT_DIR}"
     exec "${PYTHON_BIN}" -m scripts.live_llm_e2e "$@"
+    ;;
+  test-live-suite)
+    cd -- "${ROOT_DIR}"
+    exec "${PYTHON_BIN}" -m scripts.live_llm_suite "$@"
     ;;
   -h|--help|help|"")
     usage
