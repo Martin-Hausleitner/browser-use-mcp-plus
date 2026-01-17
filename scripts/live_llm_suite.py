@@ -821,8 +821,6 @@ def main(argv: list[str]) -> int:
 	parser.add_argument("--require-model", action="store_true", help="Fail if --model is not present in /models.")
 	args = parser.parse_args(argv)
 
-	# Ensure env is present early for helpful errors.
-	_require_env("BROWSER_USE_MCP_PYTHON")
 	api_key = _get_openai_api_key()
 	base_url = _resolve_openai_base_url()
 
@@ -847,6 +845,9 @@ def main(argv: list[str]) -> int:
 			)
 		)
 		return 0 if models is not None else 2
+
+	# Only required when actually running scenarios (not for model listing).
+	_require_env("BROWSER_USE_MCP_PYTHON")
 
 	if args.require_model and models is None:
 		print(json.dumps({"ok": False, "error": f"Failed to fetch /models: {model_list_error}"}, ensure_ascii=False, indent=2))
