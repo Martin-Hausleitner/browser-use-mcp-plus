@@ -31,6 +31,66 @@ def _require_env(name: str) -> str:
 	return val
 
 
+def _load_codex_auth_openai_key() -> str | None:
+	path = Path.home() / ".codex" / "auth.json"
+	try:
+		obj = json.loads(path.read_text(encoding="utf-8"))
+	except Exception:
+		return None
+	val = obj.get("OPENAI_API_KEY") if isinstance(obj, dict) else None
+	if isinstance(val, str) and val.strip():
+		return val.strip()
+	return None
+
+
+def _load_context7_key_from_codex_config() -> str | None:
+	path = Path.home() / ".codex" / "config.toml"
+	try:
+		import tomllib  # Python 3.11+
+
+		obj = tomllib.loads(path.read_text(encoding="utf-8"))
+	except Exception:
+		return None
+
+	mcp_servers = obj.get("mcp_servers") if isinstance(obj, dict) else None
+	context7 = (mcp_servers or {}).get("context7") if isinstance(mcp_servers, dict) else None
+	args = context7.get("args") if isinstance(context7, dict) else None
+	if not isinstance(args, list):
+		return None
+
+	# Expect: ["-y", "@upstash/context7-mcp", "--api-key", "<KEY>"]
+	for idx, val in enumerate(args):
+		if val == "--api-key" and idx + 1 < len(args):
+			key = args[idx + 1]
+			if isinstance(key, str) and key.strip():
+				return key.strip()
+		if isinstance(val, str) and val.startswith("--api-key="):
+			key = val.split("=", 1)[1].strip()
+			if key:
+				return key
+	return None
+
+
+def _get_openai_api_key() -> str:
+	val = (os.getenv("OPENAI_API_KEY") or "").strip()
+	if val:
+		return val
+	fallback = _load_codex_auth_openai_key()
+	if fallback:
+		return fallback
+	raise RuntimeError("Missing OPENAI_API_KEY (set env var or login via Codex so ~/.codex/auth.json exists).")
+
+
+def _get_context7_api_key() -> str:
+	val = (os.getenv("CONTEXT7_API_KEY") or "").strip()
+	if val:
+		return val
+	fallback = _load_context7_key_from_codex_config()
+	if fallback:
+		return fallback
+	raise RuntimeError("Missing CONTEXT7_API_KEY (set env var or configure ~/.codex/config.toml mcp_servers.context7).")
+
+
 def _resolve_openai_base_url() -> str:
 	base = (os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "").strip()
 	if base:
@@ -390,9 +450,9 @@ def run_live_e2e(*, model: str, max_iters: int, openai_timeout_s: float, openai_
 	repo_root = Path(__file__).resolve().parents[1]
 	python_bin = _require_env("BROWSER_USE_MCP_PYTHON")
 
-	openai_key = _require_env("OPENAI_API_KEY")
+	openai_key = _get_openai_api_key()
 	openai_base = _resolve_openai_base_url()
-	context7_key = _require_env("CONTEXT7_API_KEY")
+	context7_key = _get_context7_api_key()
 
 	session_id = f"live-llm-e2e-{int(time.time())}"
 
