@@ -31,6 +31,70 @@ from scripts.live_llm_e2e import (  # noqa: PLC2701
 )
 
 
+def _poll_eval(
+	unified: MCPStdioClient,
+	*,
+	url_contains: str,
+	script: str,
+	timeout_s: float = 3.0,
+	interval_s: float = 0.12,
+	predicate: Any | None = None,
+) -> dict[str, Any]:
+	deadline = time.time() + max(0.1, float(timeout_s))
+	last: dict[str, Any] | None = None
+	while time.time() < deadline:
+		resp = unified.request(
+			"tools/call",
+			{"name": "chrome-devtools.evaluate_script", "arguments": {"url_contains": url_contains, "script": script}},
+			timeout_s=45.0,
+		)
+		last = _extract_eval_result(_tool_text(resp))
+		if predicate is None:
+			return last
+		try:
+			if predicate(last):
+				return last
+		except Exception:
+			pass
+		time.sleep(float(interval_s))
+	return last or {}
+
+
+def _poll_network_ping_ok(
+	unified: MCPStdioClient,
+	*,
+	url_contains: str,
+	timeout_s: float = 3.0,
+	interval_s: float = 0.15,
+) -> tuple[bool, dict[str, Any] | None]:
+	deadline = time.time() + max(0.1, float(timeout_s))
+	last_obj: dict[str, Any] | None = None
+	while time.time() < deadline:
+		net = unified.request(
+			"tools/call",
+			{
+				"name": "chrome-devtools.list_network_requests",
+				"arguments": {"url_contains": url_contains, "limit": 200, "include_headers": False},
+			},
+			timeout_s=45.0,
+		)
+		obj = _tool_json(net)
+		last_obj = obj if isinstance(obj, dict) else None
+		reqs = (last_obj or {}).get("requests")
+		if isinstance(reqs, list):
+			for r in reversed(reqs):
+				if not isinstance(r, dict):
+					continue
+				url_str = str(r.get("url") or "")
+				if "/ping.txt" not in url_str:
+					continue
+				status = r.get("status")
+				if isinstance(status, int) and status == 200:
+					return True, last_obj
+		time.sleep(float(interval_s))
+	return False, last_obj
+
+
 def _openai_list_models(*, api_key: str, base_url: str, timeout_s: float = 20.0, max_retries: int = 1) -> list[str]:
 	url = f"{base_url.rstrip('/')}/models"
 	headers = {"Authorization": f"Bearer {api_key}"}
@@ -397,14 +461,14 @@ def run_live_console_fix(
 					{"name": "browser-use.browser_navigate", "arguments": {"url": verify_url}},
 					timeout_s=60.0,
 				)
-				time.sleep(0.15)
-
-				after_eval = unified.request(
-					"tools/call",
-					{"name": "chrome-devtools.evaluate_script", "arguments": {"url_contains": url_contains, "script": CONSOLE_METRICS_SCRIPT}},
-					timeout_s=45.0,
+				after_metrics = _poll_eval(
+					unified,
+					url_contains=url_contains,
+					script=CONSOLE_METRICS_SCRIPT,
+					timeout_s=4.0,
+					predicate=lambda m: bool(m.get("okFlag") is True)
+					and (str(m.get("statusText") or "").strip().upper() == "OK"),
 				)
-				after_metrics = _extract_eval_result(_tool_text(after_eval))
 
 				console = unified.request(
 					"tools/call",
@@ -585,14 +649,13 @@ def run_live_network_fix(
 					{"name": "browser-use.browser_navigate", "arguments": {"url": baseline_url}},
 					timeout_s=60.0,
 				)
-				time.sleep(0.15)
-
-				before_eval = unified.request(
-					"tools/call",
-					{"name": "chrome-devtools.evaluate_script", "arguments": {"url_contains": url_contains, "script": NETWORK_METRICS_SCRIPT}},
-					timeout_s=45.0,
+				before_metrics = _poll_eval(
+					unified,
+					url_contains=url_contains,
+					script=NETWORK_METRICS_SCRIPT,
+					timeout_s=2.5,
+					predicate=lambda m: str(m.get("valueText") or "").strip().lower() != "loading…",
 				)
-				before_metrics = _extract_eval_result(_tool_text(before_eval))
 
 				tool_calls_trace: list[dict[str, Any]] = []
 				ui_describe_used_llm: bool | None = None
@@ -754,34 +817,14 @@ def run_live_network_fix(
 					{"name": "browser-use.browser_navigate", "arguments": {"url": verify_url}},
 					timeout_s=60.0,
 				)
-				time.sleep(0.2)
-
-				after_eval = unified.request(
-					"tools/call",
-					{"name": "chrome-devtools.evaluate_script", "arguments": {"url_contains": url_contains, "script": NETWORK_METRICS_SCRIPT}},
-					timeout_s=45.0,
+				after_metrics = _poll_eval(
+					unified,
+					url_contains=url_contains,
+					script=NETWORK_METRICS_SCRIPT,
+					timeout_s=4.0,
+					predicate=lambda m: str(m.get("valueText") or "").strip().lower() == "pong",
 				)
-				after_metrics = _extract_eval_result(_tool_text(after_eval))
-
-				net = unified.request(
-					"tools/call",
-					{"name": "chrome-devtools.list_network_requests", "arguments": {"url_contains": url_contains, "limit": 200, "include_headers": False}},
-					timeout_s=45.0,
-				)
-				net_obj = _tool_json(net)
-				requests = net_obj.get("requests") if isinstance(net_obj, dict) else None
-				ping_ok = False
-				if isinstance(requests, list):
-					for r in reversed(requests):
-						if not isinstance(r, dict):
-							continue
-						url_str = str(r.get("url") or "")
-						if "/ping.txt" not in url_str:
-							continue
-						status = r.get("status")
-						if isinstance(status, int) and status == 200:
-							ping_ok = True
-							break
+				ping_ok, _net_obj = _poll_network_ping_ok(unified, url_contains=url_contains, timeout_s=4.0)
 
 				value = str(after_metrics.get("valueText") or "").strip().lower()
 				ok = (value == "pong") and ping_ok
